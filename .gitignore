@@ -1,0 +1,8 @@
+# packages that should not be included in the final package
+/node_modules
+
+# dotenv environment variables file
+.env
+
+# test api file
+requests.rest
