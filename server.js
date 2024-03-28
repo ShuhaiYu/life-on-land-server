@@ -2,7 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import mysql from 'mysql';
-import 'dotenv/config';
+
 
 dotenv.config();
 
@@ -12,16 +12,12 @@ let PORT = 3000;
 server.use(cors());
 server.use(express.json());
 
-let connection = mysql.createConnection({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USERNAME,
-  password: process.env.DB_PASSWORD,
-  database: 'Grasswren'
-});
-
-connection.connect(function (err) {
-  if (err) throw err;
-  console.log('Connected to MySQL Server!');
+const pool = mysql.createPool({
+  connectionLimit : 10, 
+  host            : process.env.DB_HOST,
+  user            : process.env.DB_USERNAME,
+  password        : process.env.DB_PASSWORD,
+  database        : 'Grasswren'
 });
 
 server.get('/', (req, res) => {
@@ -29,7 +25,16 @@ server.get('/', (req, res) => {
   });
 
 server.get('/api/grasswren/list', (req, res) => {
-    connection.query('SELECT wren_id, common_name, risk_category FROM GRASSWREN;', function (err, result) {
+    pool.query('SELECT wren_id, common_name, risk_category FROM GRASSWREN;', function (err, result) {
+        if (err) throw err;
+
+        res.send(result);
+    });
+});
+
+server.get('/api/grasswren/:id', (req, res) => {
+    const { id } = req.params;
+    pool.query(`SELECT * FROM GRASSWREN WHERE wren_id = ${id};`, function (err, result) {
         if (err) throw err;
 
         res.send(result);
