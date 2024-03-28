@@ -25,7 +25,7 @@ server.get('/', (req, res) => {
   });
 
 server.get('/api/grasswren/list', (req, res) => {
-    pool.query('SELECT wren_id, common_name, risk_category FROM GRASSWREN;', function (err, result) {
+    pool.query('SELECT wren_id, common_name, risk_category, image FROM GRASSWREN;', function (err, result) {
         if (err) throw err;
 
         res.send(result);
@@ -34,12 +34,20 @@ server.get('/api/grasswren/list', (req, res) => {
 
 server.get('/api/grasswren/:id', (req, res) => {
     const { id } = req.params;
-    pool.query(`SELECT * FROM GRASSWREN WHERE wren_id = ${id};`, function (err, result) {
+    pool.query(`SELECT wren_id, scientific_name, common_name, risk_category, image, population, location, description, threats, image FROM GRASSWREN WHERE wren_id = ${id};`, function (err, result) {
         if (err) throw err;
 
         res.send(result);
     });
 });
+
+// server.get('/api/risk/fire', (req, res) => {
+//     pool.query('SELECT * FROM FIRE;', function (err, result) {
+//         if (err) throw err;
+
+//         res.send(result);
+//     });
+// });
 
 server.listen(PORT, () => {
     console.log('Server is running on port', PORT);
