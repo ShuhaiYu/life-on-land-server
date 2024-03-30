@@ -34,20 +34,25 @@ server.get('/api/grasswren/list', (req, res) => {
 
 server.get('/api/grasswren/:id', (req, res) => {
     const { id } = req.params;
-    pool.query(`SELECT wren_id, scientific_name, common_name, risk_category, image, population, location, description, threats, image FROM GRASSWREN WHERE wren_id = ${id};`, function (err, result) {
+    pool.query(`SELECT wren_id, scientific_name, common_name, risk_category, image, population, location, description, threats, image, audio FROM GRASSWREN WHERE wren_id = ${id};`, function (err, result) {
         if (err) throw err;
 
         res.send(result);
     });
 });
 
-// server.get('/api/risk/fire', (req, res) => {
-//     pool.query('SELECT * FROM FIRE;', function (err, result) {
-//         if (err) throw err;
+server.get('/api/risk/firepoints', (req, res) => {
+    let query = 'SELECT CASE WHEN ST_GeometryType(geometry_geom) = \'MULTIPOLYGON\' THEN ST_AsText(ST_PointN(ST_ExteriorRing(ST_GeometryN(geometry_geom, 1)), 1)) WHEN ST_GeometryType(geometry_geom) = \'POLYGON\' THEN ST_AsText(ST_PointN(ST_ExteriorRing(geometry_geom), 1)) ELSE NULL END AS first_point FROM FIRE WHERE fire_type = \'Bushfire\' OR fire_type = \'Unknown\'';
 
-//         res.send(result);
-//     });
-// });
+    pool.query(query, function (err, result) {
+        if (err) {
+            console.error(err);
+            return res.status(500).send('Server error');
+        }
+        
+        res.send(result);
+    });
+});
 
 server.listen(PORT, () => {
     console.log('Server is running on port', PORT);
