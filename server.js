@@ -54,6 +54,19 @@ server.get('/api/risk/firepoints', (req, res) => {
     });
 });
 
+server.get('/api/risk/firedata', (req, res) => {
+    let query = 'SELECT fire_date, fire_type, state FROM FIRE ORDER BY fire_date';
+
+    pool.query(query, function (err, result) {
+        if (err) {
+            console.error(err);
+            return res.status(500).send('Server error');
+        }
+        
+        res.send(result);
+    });
+});
+
 server.listen(PORT, () => {
     console.log('Server is running on port', PORT);
     }
