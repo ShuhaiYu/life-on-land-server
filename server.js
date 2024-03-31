@@ -42,7 +42,7 @@ server.get('/api/grasswren/:id', (req, res) => {
 });
 
 server.get('/api/risk/firepoints', (req, res) => {
-    let query = 'SELECT CASE WHEN ST_GeometryType(geometry_geom) = \'MULTIPOLYGON\' THEN ST_AsText(ST_PointN(ST_ExteriorRing(ST_GeometryN(geometry_geom, 1)), 1)) WHEN ST_GeometryType(geometry_geom) = \'POLYGON\' THEN ST_AsText(ST_PointN(ST_ExteriorRing(geometry_geom), 1)) ELSE NULL END AS first_point FROM FIRE WHERE fire_type = \'Bushfire\' OR fire_type = \'Unknown\'';
+    let query = 'SELECT geometry AS first_point FROM FIRE WHERE fire_type = \'Bushfire\'';
 
     pool.query(query, function (err, result) {
         if (err) {
