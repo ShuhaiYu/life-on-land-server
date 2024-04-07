@@ -7,7 +7,7 @@ import mysql from 'mysql';
 dotenv.config();
 
 const server = express();
-let PORT = 3000;
+let PORT = process.env.PORT || 3000;
 
 server.use(cors());
 server.use(express.json());
