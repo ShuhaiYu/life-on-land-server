@@ -21,7 +21,7 @@ const pool = mysql.createPool({
 });
 
 server.get('/', (req, res) => {
-    res.send('Hello World This is the server for the FYJI team!');
+    res.status(200).send('Hello World This is the server for the FYJI team!');
   });
 
 server.get('/api/grasswren/list', (req, res) => {
