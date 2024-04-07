@@ -25,7 +25,7 @@ server.get('/', (req, res) => {
   });
 
 server.get('/api/grasswren/list', (req, res) => {
-    pool.query('SELECT wren_id, common_name, risk_category, image FROM GRASSWREN;', function (err, result) {
+    pool.query('SELECT wren_id, common_name, risk_category, image FROM GRASSWREN ORDER BY risk_category;', function (err, result) {
         if (err) throw err;
 
         res.send(result);
