@@ -3,15 +3,15 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import mysql from 'mysql';
 
+dotenv.config();   // Load environment variables from .env file
 
-dotenv.config();
+const server = express();  
+let PORT = process.env.PORT || 3000; 
 
-const server = express();
-let PORT = process.env.PORT || 3000;
+server.use(cors());  // Enable CORS
+server.use(express.json());  // Enable JSON body parsing
 
-server.use(cors());
-server.use(express.json());
-
+// Create a connection pool to the MySQL database
 const pool = mysql.createPool({
     connectionLimit: 10,
     host: process.env.DB_HOST,
@@ -58,7 +58,9 @@ server.get('/api/grasswren/:id', (req, res) => {
             res.status(404).send('Grasswren not found.');
             return;
         }
+        // Extract observation locations from the result
         const obs_locations = result.map(item => ({ lat: item.obs_lat, lon: item.obs_lon }));
+        // Remove the observation columns from the result
         let finalResult = { ...result[0], obs_locations };
         res.send(finalResult);
     });
