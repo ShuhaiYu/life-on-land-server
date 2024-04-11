@@ -51,15 +51,16 @@ server.get('/api/grasswren/list', (req, res) => {
 
 // Fetch detailed information about a specific Grasswren by ID
 server.get('/api/grasswren/:id', (req, res) => {
-    const sql = `SELECT g.wren_id, scientific_name, common_name, risk_category, image, population, location, description, threats, image, audio, obs_lat, obs_lon FROM Grasswren.OBSERVATION AS o RIGHT JOIN Grasswren.GRASSWREN AS g ON g.wren_id = o.wren_id WHERE g.wren_id = ?;`;
+    const sql = `SELECT g.wren_id, scientific_name, common_name, risk_category, image, population, location, description, threats, image, audio, obs_lat, obs_lon, obs_date FROM Grasswren.OBSERVATION AS o RIGHT JOIN Grasswren.GRASSWREN AS g ON g.wren_id = o.wren_id WHERE g.wren_id = ?;`;
     const params = [req.params.id];
     queryDatabase(sql, params, res, result => {
         if (result.length === 0) {
             res.status(404).send('Grasswren not found.');
             return;
         }
+        // res.send(result);
         // Extract observation locations from the result
-        const obs_locations = result.map(item => ({ lat: item.obs_lat, lon: item.obs_lon }));
+        const obs_locations = result.map(item => ({ lat: item.obs_lat, lon: item.obs_lon, date: item.obs_date}));
         // Remove the observation columns from the result
         let finalResult = { ...result[0], obs_locations };
         res.send(finalResult);
