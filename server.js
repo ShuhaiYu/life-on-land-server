@@ -2,11 +2,12 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import mysql from 'mysql';
+import axios from 'axios';
 
 dotenv.config();   // Load environment variables from .env file
 
-const server = express();  
-let PORT = process.env.PORT || 3000; 
+const server = express();
+let PORT = process.env.PORT || 3000;
 
 server.use(cors());  // Enable CORS
 server.use(express.json());  // Enable JSON body parsing
@@ -32,13 +33,38 @@ function queryDatabase(sql, params, res, callback) {
     });
 }
 
+// Function to geocode postcode using Google Geocode API
+async function geocodePostcode(postcode) {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json`;
+    try {
+        const response = await axios.get(url, {
+            params: {
+                address: `${postcode} Australia`,
+                key: process.env.GOOGLE_MAPS_API_KEY
+            }
+        });
+        const { data } = response;
+        if (data.status === 'OK') {
+            const { lat, lng } = data.results[0].geometry.location;
+            console.log('Geocoded coordinates:', lat, lng);
+            return { latitude: lat, longitude: lng };
+        }
+        console.error('Geocoding error:', data.status);
+        return null;
+    } catch (error) {
+        console.error('Error contacting the Google API:', error);
+        return null;
+    }
+}
 
 server.get('/', (req, res) => {
+    console.log('Received request:', req.method, req.url);
     res.status(200).send('Hello World This is the server for the FYJI team!');
 });
 
 // List all Grasswrens with basic information
 server.get('/api/grasswren/list', (req, res) => {
+    console.log('Fetching Grasswren list...');
     const sql = 'SELECT wren_id, common_name, risk_category, image FROM GRASSWREN ORDER BY risk_category;';
     queryDatabase(sql, [], res, result => {
         if (result.length === 0) {
@@ -51,6 +77,7 @@ server.get('/api/grasswren/list', (req, res) => {
 
 // Fetch detailed information about a specific Grasswren by ID
 server.get('/api/grasswren/:id', (req, res) => {
+    console.log('Fetching Grasswren details for ID:', req.params.id);
     const sql = `SELECT g.wren_id, scientific_name, common_name, risk_category, image, population, location, description, threats, image, audio, obs_lat, obs_lon, obs_date FROM Grasswren.OBSERVATION AS o RIGHT JOIN Grasswren.GRASSWREN AS g ON g.wren_id = o.wren_id WHERE g.wren_id = ?;`;
     const params = [req.params.id];
     queryDatabase(sql, params, res, result => {
@@ -60,10 +87,52 @@ server.get('/api/grasswren/:id', (req, res) => {
         }
         // res.send(result);
         // Extract observation locations from the result
-        const obs_locations = result.map(item => ({ lat: item.obs_lat, lon: item.obs_lon, date: item.obs_date}));
+        const obs_locations = result.map(item => ({ lat: item.obs_lat, lon: item.obs_lon, date: item.obs_date }));
         // Remove the observation columns from the result
         let finalResult = { ...result[0], obs_locations };
         res.send(finalResult);
+    });
+});
+
+
+// Get if user are close to grasswren
+// Endpoint to check for nearby grasswrens
+server.get('/api/grasswren/geo/nearby', async (req, res) => {
+    console.log('Checking for nearby Grasswrens...');
+    const { postcode } = req.query;
+    console.log('Postcode:', postcode);
+    if (!postcode) {
+        res.status(400).send('Postcode is required.');
+        return;
+    }
+
+    const coords = await geocodePostcode(postcode);
+    if (!coords) {
+        res.status(404).send('Invalid postcode or no data available.');
+        return;
+    }
+    console.log('Geocoded coordinates:', coords);
+
+    const { latitude, longitude } = coords;
+    const queryRadius = 100; // Radius in kilometers
+    const sql = `
+        SELECT wren_id, obs_lat, obs_lon,
+            (6371 * acos(cos(radians(?)) * cos(radians(obs_lat)) *
+            cos(radians(obs_lon) - radians(?)) + sin(radians(?)) *
+            sin(radians(obs_lat)))) AS distance
+        FROM OBSERVATION
+        WHERE wren_id IS NOT NULL
+        HAVING distance < ?
+        ORDER BY distance;
+    `;
+    const params = [latitude, longitude, latitude, queryRadius];
+
+    queryDatabase(sql, params, res, result => {
+        if (result.length === 0) {
+            res.send({ nearby: false });
+            return;
+        }
+        res.send({ nearby: true, observations: result });
     });
 });
 
