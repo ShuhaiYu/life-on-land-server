@@ -96,6 +96,58 @@ server.get('/api/grasswren/:id', (req, res) => {
     });
 });
 
+server.get('/api/grasswren/geo/all', (req, res) => {
+    console.log('Fetching all Grasswren geographic data');
+
+    const sql = `
+        SELECT 
+            common_name, 
+            obs_lat, 
+            obs_lon, 
+            obs_date
+        FROM (
+            SELECT 
+                g.common_name, 
+                o.obs_lat, 
+                o.obs_lon, 
+                o.obs_date,
+                ROW_NUMBER() OVER (PARTITION BY g.common_name ORDER BY o.obs_date DESC) AS rn
+            FROM 
+                Grasswren.GRASSWREN AS g
+            LEFT JOIN 
+                Grasswren.OBSERVATION AS o ON g.wren_id = o.wren_id
+        ) sub
+        WHERE rn <= 50;
+    `;
+
+    queryDatabase(sql, [], res, result => {
+        if (result.length === 0) {
+            res.status(404).send('No Grasswren data found.');
+            return;
+        }
+
+        // Optional: Reduce data to group observations under each common name
+        const groupedResults = result.reduce((acc, item) => {
+            if (!acc[item.common_name]) {
+                acc[item.common_name] = {
+                    common_name: item.common_name,
+                    observations: []
+                };
+            }
+            if (item.obs_lat && item.obs_lon && item.obs_date) {
+                acc[item.common_name].observations.push({
+                    lat: item.obs_lat,
+                    lon: item.obs_lon,
+                    date: item.obs_date
+                });
+            }
+            return acc;
+        }, {});
+
+        res.send(Object.values(groupedResults));
+    });
+});
+
 
 // Get if user are close to grasswren
 // Endpoint to check for nearby grasswrens
@@ -140,7 +192,7 @@ server.get('/api/grasswren/geo/nearby', async (req, res) => {
 
 // Get fire points for a specific type of fire
 server.get('/api/risk/firepoints', (req, res) => {
-    const query = "SELECT geometry AS first_point FROM FIRE WHERE fire_type = 'Bushfire';";
+    const query = "SELECT fire_date, geometry AS first_point FROM FIRE;";
     queryDatabase(query, [], res, result => {
         res.send(result);
     });
@@ -153,6 +205,85 @@ server.get('/api/risk/firedata', (req, res) => {
         res.send(result);
     });
 });
+
+server.get('/api/risk/predators', (req, res) => {
+    const sql = `
+        SELECT obs.obs_date, obs.obs_lat, obs.obs_lon, p.pre_name
+        FROM OBSERVATION AS obs 
+        JOIN PREDATOR AS p ON obs.pre_id = p.pre_id
+        WHERE obs.pre_id IS NOT NULL;
+    `;
+
+    queryDatabase(sql, [], res, result => {
+        if (result.length === 0) {
+            res.status(404).send('No predator data found.');
+            return;
+        }
+
+        // Group the data by predator name
+        const groupedData = result.reduce((acc, item) => {
+            // Initialize the predator group if it doesn't already exist
+            if (!acc[item.pre_name]) {
+                acc[item.pre_name] = [];
+            }
+
+            // Add the observation to the correct predator group
+            acc[item.pre_name].push({
+                obs_date: item.obs_date,
+                obs_lat: item.obs_lat,
+                obs_lon: item.obs_lon
+            });
+
+            return acc;
+        }, {});
+
+        res.json(groupedData);
+    });
+});
+
+
+server.get('/api/risk/human', async (req, res) => {
+    try {
+        // Query for camping data
+        const campingData = await new Promise((resolve, reject) => {
+            const campingSql = "SELECT * FROM CAMPING";
+            queryDatabase(campingSql, [], res, (result) => {
+                if (result.length === 0) {
+                    reject('No camping data found.');
+                } else {
+                    resolve(result);
+                }
+            });
+        });
+
+        // Query for hunting data
+        const huntingData = await new Promise((resolve, reject) => {
+            const huntingSql = "SELECT * FROM HUNTING";
+            queryDatabase(huntingSql, [], res, (result) => {
+                if (result.length === 0) {
+                    reject('No hunting data found.');
+                } else {
+                    resolve(result);
+                }
+            });
+        });
+
+        // Combine all results into a single object categorized by type
+        const responseData = {
+            camping: campingData,
+            hunting: huntingData
+        };
+
+        // Send the combined response
+        res.json(responseData);
+    } catch (error) {
+        console.error('Failed to retrieve data:', error);
+        res.status(500).send(error);
+    }
+});
+
+
+
 
 server.listen(PORT, () => {
     console.log('Server is running on port', PORT);
