@@ -85,11 +85,13 @@ server.get('/api/grasswren/:id', (req, res) => {
             res.status(404).send('Grasswren not found.');
             return;
         }
-        // res.send(result);
+
         // Extract observation locations from the result
         const obs_locations = result.map(item => ({ lat: item.obs_lat, lon: item.obs_lon, date: item.obs_date }));
+        // Find the earliest observation date
+        const earliestObsDate = obs_locations.reduce((min, p) => p.date < min ? p.date : min, obs_locations[0].date);
         // Remove the observation columns from the result
-        let finalResult = { ...result[0], obs_locations };
+        let finalResult = { ...result[0], obs_locations, earliestObsDate };
         res.send(finalResult);
     });
 });
