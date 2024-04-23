@@ -216,7 +216,7 @@ server.get('/api/risk/predators', (req, res) => {
 
     queryDatabase(sql, [], res, result => {
         if (result.length === 0) {
-            res.status(404).send('No predator data found.');
+            res.status(404).send('No predator location found.');
             return;
         }
 
@@ -238,6 +238,23 @@ server.get('/api/risk/predators', (req, res) => {
         }, {});
 
         res.json(groupedData);
+    });
+});
+
+server.get('/api/risk/predatorsdata', (req, res) => {
+    const sql = `
+        SELECT obs.obs_date, p.pre_name
+        FROM OBSERVATION AS obs 
+        JOIN PREDATOR AS p ON obs.pre_id = p.pre_id
+        WHERE obs.pre_id IS NOT NULL;
+    `;
+
+    queryDatabase(sql, [], res, result => {
+        if (result.length === 0) {
+            res.status(404).send('No predator data found.');
+            return;
+        }
+        res.status(200).send(result);
     });
 });
 
