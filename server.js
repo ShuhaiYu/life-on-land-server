@@ -34,6 +34,20 @@ function queryDatabase(sql, params, res, callback) {
     });
 }
 
+// Utility function to perform SQL queries with basic error handling using Promises
+function queryDatabaseWithPromises(sql, params) {
+    return new Promise((resolve, reject) => {
+        pool.query(sql, params, (err, result) => {
+            if (err) {
+                console.error(err);
+                reject('An error occurred while fetching data from the database.');
+            } else {
+                resolve(result);
+            }
+        });
+    });
+}
+
 // Function to geocode postcode using Google Geocode API
 async function geocodePostcode(postcode) {
     const url = `https://maps.googleapis.com/maps/api/geocode/json`;
@@ -207,9 +221,42 @@ server.get('/api/risk/firedata', (req, res) => {
     });
 });
 
+// Helper functions
+async function getHistoricalFireData(longitude, latitude) {
+    const query = `
+        SELECT 
+            COUNT(*) AS count, 
+            fire_date,
+            EXTRACT(MONTH FROM fire_date) AS month, 
+            ROUND(ST_Distance_Sphere(geometry, POINT(?, ?)) / 1000, 2) AS distance_km
+        FROM FIRE
+        WHERE ST_Distance_Sphere(geometry, POINT(?, ?)) <= 200000
+        GROUP BY YEAR(fire_date), MONTH(fire_date)
+        ORDER BY fire_date DESC
+        LIMIT 200;
+    `;
+    const params = [longitude, latitude, longitude, latitude];
+    try {
+        return await queryDatabaseWithPromises(query, params);
+    } catch (error) {
+        console.error('Database query failed:', error);
+        throw error;  // Rethrow to handle error in the calling function
+    }
+}
+
+function calculateRisk(probability) {
+    if (probability > 75) {
+        return 'High';
+    } else if (probability > 50) {
+        return 'Moderate';
+    } else if (probability > 25) {
+        return 'Low';
+    }
+    return 'Very Low';
+}
+
 server.get('/api/risk/estimate', async (req, res) => {
     const { postcode, currentDate } = req.query;
-
     if (!postcode || !currentDate) {
         return res.status(400).send("Both postcode and current date are required.");
     }
@@ -221,63 +268,37 @@ server.get('/api/risk/estimate', async (req, res) => {
         }
 
         const { latitude, longitude } = coords;
-        const currentMoment = moment(currentDate);
-        const nextMonthMoment = moment(currentDate).add(1, 'months');
+        const results = await getHistoricalFireData(longitude, latitude);
+        if (!Array.isArray(results)) {
+            return res.status(500).send("Error fetching data from database");
+        }
+        const nextMonthMoment = moment(currentDate).add(1, 'months').month() + 1;  // Adjust month to match SQL
 
-        const query = `
-            SELECT 
-                COUNT(*) AS count, 
-                fire_date,
-                MONTH(fire_date) AS month,
-                ROUND(ST_Distance_Sphere(geometry, POINT(?, ?)) / 1000, 2) AS distance_km  -- Distance in kilometers
-            FROM FIRE
-            WHERE ST_Distance_Sphere(geometry, POINT(?, ?)) <= 200000  -- Within 100 km radius
-            GROUP BY YEAR(fire_date), MONTH(fire_date)
-            ORDER BY fire_date DESC
-            LIMIT 200;  -- Limit to 100 historical points
-        `;
-
-        queryDatabase(query, [longitude, latitude, longitude, latitude], res, results => {
-            const nextMonthData = results.filter(r => {
-                const fireMoment = moment(r.fire_date);
-                return fireMoment.year() === nextMonthMoment.year() && fireMoment.month() === nextMonthMoment.month();
-            });
-
-            const totalFires = results.length;
-            const nextMonthFires = nextMonthData.length;
-            const probability = (nextMonthFires / totalFires) * 100;
-
-            // Risk levels based on probability
-            let riskLevel;
-            if (probability > 75) {
-                riskLevel = 'High';
-            } else if (probability > 50) {
-                riskLevel = 'Moderate';
-            } else if (probability > 25) {
-                riskLevel = 'Low';
-            } else {
-                riskLevel = 'Very Low';
+        let nextMonthFires = 0, totalFires = 0;
+        results.forEach(result => {
+            if (result.month === nextMonthMoment) {
+                nextMonthFires += result.count;
             }
-
-            res.send({
-                latitude,
-                longitude,
-                riskLevel,
-                probability: `${probability.toFixed(2)}%`,
-                historicalData: results.map(r => ({
-                    count: r.count,
-                    fire_date: r.fire_date,
-                    distance_km: r.distance_km,
-                    month: r.month
-                }))
-            });
+            totalFires += result.count;
         });
 
+        const probability = totalFires > 0 ? (nextMonthFires / totalFires) * 100 : 0;
+        const riskLevel = calculateRisk(probability);
+
+        res.send({
+            latitude,
+            longitude,
+            riskLevel,
+            probability: `${probability.toFixed(2)}%`,
+            historicalData: results
+        });
     } catch (error) {
         console.error('Error processing request:', error);
         res.status(500).send("An error occurred while processing your request.");
     }
 });
+
+
 
 server.get('/api/risk/predators', (req, res) => {
     const sql = `
