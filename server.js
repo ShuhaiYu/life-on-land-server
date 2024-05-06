@@ -61,8 +61,23 @@ async function geocodePostcode(postcode) {
         const { data } = response;
         if (data.status === 'OK') {
             const { lat, lng } = data.results[0].geometry.location;
+            const addressComponents = data.results[0].address_components;
+
+            let city = '';
+            let state = '';
+
+            addressComponents.forEach(component => {
+                if (component.types.includes('locality')) {
+                    city = component.long_name; 
+                }
+                if (component.types.includes('administrative_area_level_1')) {
+                    state = component.short_name; 
+                }
+            });
+
             console.log('Geocoded coordinates:', lat, lng);
-            return { latitude: lat, longitude: lng };
+            console.log('City:', city, 'State:', state);
+            return { latitude: lat, longitude: lng, city, state };
         }
         console.error('Geocoding error:', data.status);
         return null;
@@ -267,7 +282,7 @@ server.get('/api/risk/estimate', async (req, res) => {
             return res.status(404).send("Coordinates not found for the provided postcode.");
         }
 
-        const { latitude, longitude } = coords;
+        const { latitude, longitude, city, state } = coords;
         const results = await getHistoricalFireData(longitude, latitude);
         if (!Array.isArray(results)) {
             return res.status(500).send("Error fetching data from database");
@@ -290,7 +305,9 @@ server.get('/api/risk/estimate', async (req, res) => {
             longitude,
             riskLevel,
             probability: `${probability.toFixed(2)}%`,
-            historicalData: results
+            historicalData: results,
+            city,
+            state
         });
     } catch (error) {
         console.error('Error processing request:', error);
