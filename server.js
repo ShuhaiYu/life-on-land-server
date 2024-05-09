@@ -261,13 +261,13 @@ async function getHistoricalFireData(longitude, latitude) {
 
 function calculateRisk(probability) {
     if (probability > 75) {
-        return 'High';
+        return 'Catastrophic';
     } else if (probability > 50) {
-        return 'Moderate';
+        return 'Extreme';
     } else if (probability > 25) {
-        return 'Low';
+        return 'High';
     }
-    return 'Very Low';
+    return 'Moderate';
 }
 
 server.get('/api/risk/estimate', async (req, res) => {
