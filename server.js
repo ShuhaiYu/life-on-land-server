@@ -270,6 +270,32 @@ function calculateRisk(probability) {
     return 'Moderate';
 }
 
+// Function to fetch weather data with error handling
+async function fetchWeatherForecast(latitude, longitude) {
+    const url = `https://api.openweathermap.org/data/3.0/onecall?lat=${latitude}&lon=${longitude}&exclude=minutely,hourly,alerts&appid=${process.env.OPEN_WEATHER_API_KEY}&units=metric`;
+    try {
+        const response = await axios.get(url);
+        return response.data;
+    } catch (error) {
+        console.error("Failed to fetch weather data");
+        return null;  // Return null to indicate failure
+    }
+}
+
+// Function to fetch fire risk prediction with error handling
+async function fetchFireRisk(longitude, latitude, date) {
+    const url = `http://ec2-13-210-132-95.ap-southeast-2.compute.amazonaws.com/predict_fire?longitude=${longitude}&latitude=${latitude}&start_date=${date}`;
+    try {
+        const response = await axios.get(url);
+        return response.data.fire_risk_prediction;
+    } catch (error) {
+        console.error("Failed to fetch fire risk prediction");
+        return null;  // Return null to indicate failure
+    }
+}
+
+
+// Main API endpoint to estimate risk
 server.get('/api/risk/estimate', async (req, res) => {
     const { postcode, currentDate } = req.query;
     if (!postcode || !currentDate) {
@@ -283,6 +309,11 @@ server.get('/api/risk/estimate', async (req, res) => {
         }
 
         const { latitude, longitude, city, state } = coords;
+        const [weatherData, modelPrediction] = await Promise.all([
+            fetchWeatherForecast(latitude, longitude),
+            fetchFireRisk(longitude, latitude, currentDate)
+        ]);
+        
         const results = await getHistoricalFireData(longitude, latitude);
         if (!Array.isArray(results)) {
             return res.status(500).send("Error fetching data from database");
@@ -297,7 +328,26 @@ server.get('/api/risk/estimate', async (req, res) => {
             totalFires += result.count;
         });
 
-        const probability = totalFires > 0 ? (nextMonthFires / totalFires) * 100 : 0;
+        // Calculate the probability based on the number of fires
+        let probability = totalFires > 0 ? (nextMonthFires / totalFires) * 100 : 0;
+
+        // Calculate the probability based on the weather data
+        if (weatherData) {
+            weatherData.daily.forEach(day => {
+                if (day.humidity < 30 && day.wind_speed > 5) { 
+                    if (day.temp.max > 30) probability += 1; // Increase risk score based on hot conditions
+                    if (day.temp.max > 40) probability += 1; // Increase risk score based on extreme heat
+                    probability += 1; // Increase risk score based on dry and windy conditions
+                }
+            });
+        }
+
+        // Calculate the probability based on the model prediction
+        // Model prediction is a value between 0 and 10000
+        if (modelPrediction) {
+            probability = (probability + (modelPrediction / 100)) / 2;
+        }
+
         const riskLevel = calculateRisk(probability);
 
         res.send({
